@@ -15,6 +15,7 @@ const PriceCanvas = () => {
     draggedItem,
     dragType,
     setDraggedItem,
+    toasts,
   } = useAppStore();
 
   const items = getCurrentItems();
@@ -83,7 +84,7 @@ const PriceCanvas = () => {
   const templateName = currentTemplate === 'weekday' ? '日常价目表' : '周末价目表';
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-gray-100 to-gray-200 p-6 overflow-auto flex items-center justify-center">
+    <div className="flex-1 bg-gradient-to-br from-gray-100 to-gray-200 p-6 overflow-auto flex items-center justify-center relative">
       <div className="relative">
         <div className="absolute -inset-4 bg-gradient-to-b from-gray-300 to-gray-400 rounded-2xl shadow-2xl" />
         <div className="absolute -inset-3 bg-gradient-to-b from-gray-200 to-gray-300 rounded-xl" />
@@ -150,6 +151,19 @@ const PriceCanvas = () => {
           立式公示牌预览 · 2:3 比例
         </div>
       </div>
+
+      {toasts.length > 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-50">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className="animate-toast-in px-4 py-2 bg-gray-800 text-white text-sm rounded-lg shadow-lg whitespace-nowrap"
+            >
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

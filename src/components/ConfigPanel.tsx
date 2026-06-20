@@ -1,14 +1,27 @@
 import { useAppStore } from '@/store/useAppStore';
-import { Settings, Tag, DollarSign, Package, X, Plus, Trash2 } from 'lucide-react';
-import type { PriceUnit, DiscountType, EquipmentOption } from '@/types';
+import { Settings, Tag, DollarSign, Package, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import type { PriceUnit, DiscountType, EquipmentOption, EditableField } from '@/types';
 import { useState } from 'react';
 
+const FIELD_LABELS: Record<EditableField, string> = {
+  name: '名称',
+  basePrice: '价格',
+  description: '描述',
+};
+
 const ConfigPanel = () => {
-  const { selectedItemId, getCurrentItems, updateItem } = useAppStore();
+  const { selectedItemId, getCurrentItems, updateItem, conflicts, resolveConflict } = useAppStore();
   const items = getCurrentItems();
   const selectedItem = items.find((item) => item.id === selectedItemId);
 
   const [activeTab, setActiveTab] = useState<'basic' | 'equipment' | 'discount'>('basic');
+
+  const itemConflicts = selectedItem
+    ? conflicts.filter((c) => c.itemId === selectedItem.id)
+    : [];
+
+  const isFieldConflicted = (field: EditableField) =>
+    itemConflicts.some((c) => c.field === field);
 
   if (!selectedItem) {
     return (
@@ -93,6 +106,37 @@ const ConfigPanel = () => {
         <p className="text-xs text-gray-500 mt-1 truncate">{selectedItem.name}</p>
       </div>
 
+      {itemConflicts.length > 0 && (
+        <div className="p-3 bg-orange-50 border-b border-orange-200 animate-slide-down">
+          {itemConflicts.map((conflict) => (
+            <div key={conflict.conflictId} className="mb-2 last:mb-0">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                <span className="text-xs font-bold text-orange-700">
+                  {FIELD_LABELS[conflict.field]}冲突
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => resolveConflict(conflict.conflictId, conflict.itemId, conflict.field, conflict.localValue)}
+                  className="flex-1 p-1.5 bg-blue-50 border border-blue-300 rounded text-center hover:bg-blue-100 transition-colors"
+                >
+                  <div className="text-[10px] text-blue-500">本地 · {conflict.localNickname}</div>
+                  <div className="text-xs font-bold text-blue-700 truncate">{String(conflict.localValue)}</div>
+                </button>
+                <button
+                  onClick={() => resolveConflict(conflict.conflictId, conflict.itemId, conflict.field, conflict.remoteValue)}
+                  className="flex-1 p-1.5 bg-purple-50 border border-purple-300 rounded text-center hover:bg-purple-100 transition-colors"
+                >
+                  <div className="text-[10px] text-purple-500">远端 · {conflict.remoteNickname}</div>
+                  <div className="text-xs font-bold text-purple-700 truncate">{String(conflict.remoteValue)}</div>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex border-b border-gray-100">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -124,8 +168,15 @@ const ConfigPanel = () => {
                 type="text"
                 value={selectedItem.name}
                 onChange={(e) => handleBasicChange('name', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                disabled={isFieldConflicted('name')}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               />
+              {isFieldConflicted('name') && (
+                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  名称字段存在冲突，请先解决
+                </p>
+              )}
             </div>
 
             <div>
@@ -136,9 +187,16 @@ const ConfigPanel = () => {
                   type="number"
                   value={selectedItem.basePrice}
                   onChange={(e) => handleBasicChange('basePrice', Number(e.target.value))}
-                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                  disabled={isFieldConflicted('basePrice')}
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
                 />
               </div>
+              {isFieldConflicted('basePrice') && (
+                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  价格字段存在冲突，请先解决
+                </p>
+              )}
             </div>
 
             <div>
@@ -167,9 +225,16 @@ const ConfigPanel = () => {
               <textarea
                 value={selectedItem.description}
                 onChange={(e) => handleBasicChange('description', e.target.value)}
+                disabled={isFieldConflicted('description')}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all resize-none disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
               />
+              {isFieldConflicted('description') && (
+                <p className="text-xs text-orange-500 mt-1 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  描述字段存在冲突，请先解决
+                </p>
+              )}
             </div>
           </div>
         )}

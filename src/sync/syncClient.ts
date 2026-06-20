@@ -1,10 +1,16 @@
-import type { TemplateMode, PriceTemplate } from '@/types';
+import type { SyncMessage } from '@/types';
 
-export interface SyncMessage {
-  type: 'STATE_SYNC';
-  currentTemplate: TemplateMode;
-  templates: PriceTemplate[];
+const CHARS = '风云雷电雨雪霜晨曦暮霞明辉映照光耀星辰月日天地山水江河湖海林森岩峰谷涧溪波浪潮涌澎湃浩瀚辽阔苍茫碧翠丹青紫金白银红黄蓝绿青橙粉墨桃杏梅兰竹菊松柏柳梧桐枫楠芝蓉薇蔷荷莲芹芦苇葵';
+function generateNickname(): string {
+  let result = '';
+  for (let i = 0; i < 4; i++) {
+    result += CHARS[Math.floor(Math.random() * CHARS.length)];
+  }
+  return result;
 }
+
+export const clientId = `client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+export const nickname = generateNickname();
 
 type SyncHandler = (data: SyncMessage) => void;
 type ConnectHandler = () => void;
@@ -15,11 +21,23 @@ let ws: WebSocket | null = null;
 let handlers: SyncHandler[] = [];
 let connectHandlers: ConnectHandler[] = [];
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let currentRole: 'editor' | 'preview' = 'editor';
 
-function connect() {
+function sendClientJoin(role: 'editor' | 'preview') {
+  sendMessage({
+    type: 'CLIENT_JOIN',
+    clientId,
+    nickname,
+    role,
+  });
+}
+
+function connect(role: 'editor' | 'preview') {
   if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
     return;
   }
+
+  currentRole = role;
 
   try {
     ws = new WebSocket(SYNC_URL);
@@ -29,39 +47,42 @@ function connect() {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+      sendClientJoin(role);
       connectHandlers.forEach((handler) => handler());
     };
 
     ws.onmessage = (event) => {
       try {
         const data: SyncMessage = JSON.parse(event.data);
-        if (data.type === 'STATE_SYNC') {
-          handlers.forEach((handler) => handler(data));
-        }
+        handlers.forEach((handler) => handler(data));
       } catch {}
     };
 
     ws.onclose = () => {
       ws = null;
-      reconnectTimer = setTimeout(connect, 2000);
+      reconnectTimer = setTimeout(() => connect(currentRole), 2000);
     };
 
     ws.onerror = () => {
       ws?.close();
     };
   } catch {
-    reconnectTimer = setTimeout(connect, 3000);
+    reconnectTimer = setTimeout(() => connect(currentRole), 3000);
   }
 }
 
-export function initSyncClient() {
-  connect();
+export function initSyncClient(role: 'editor' | 'preview' = 'editor') {
+  connect(role);
 }
 
-export function sendSyncMessage(data: SyncMessage) {
+export function sendMessage(data: SyncMessage) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
   }
+}
+
+export function sendSyncMessage(data: SyncMessage) {
+  sendMessage(data);
 }
 
 export function onSyncMessage(handler: SyncHandler) {
