@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import type { TemplateMode, ServiceItem, OrderState, CalculatedPrice } from '@/types';
+import type { TemplateMode, ServiceItem, OrderState, CalculatedPrice, PriceTemplate } from '@/types';
 import { defaultTemplates, moduleLibrary } from '@/data/defaultData';
+import { sendSyncMessage, initSyncClient, onSyncConnect, type SyncMessage } from '@/sync/syncClient';
 
 interface AppState {
   currentTemplate: TemplateMode;
-  templates: typeof defaultTemplates;
+  templates: PriceTemplate[];
   selectedItemId: string | null;
   orderState: OrderState;
   draggedItem: ServiceItem | null;
@@ -25,6 +26,21 @@ interface AppState {
 let itemIdCounter = 100;
 const generateId = () => `item-new-${itemIdCounter++}`;
 
+const broadcastState = (currentTemplate: TemplateMode, templates: PriceTemplate[]) => {
+  sendSyncMessage({
+    type: 'STATE_SYNC',
+    currentTemplate,
+    templates,
+  });
+};
+
+initSyncClient();
+
+onSyncConnect(() => {
+  const state = useAppStore.getState();
+  broadcastState(state.currentTemplate, state.templates);
+});
+
 export const useAppStore = create<AppState>((set, get) => ({
   currentTemplate: 'weekday',
   templates: defaultTemplates,
@@ -41,6 +57,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCurrentTemplate: (template) => {
     set({ currentTemplate: template, selectedItemId: null });
+    broadcastState(template, get().templates);
   },
 
   getCurrentItems: () => {
@@ -52,8 +69,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectItem: (id) => set({ selectedItemId: id }),
 
   updateItem: (id, updates) => {
-    set((state) => ({
-      templates: state.templates.map((template) => {
+    set((state) => {
+      const newTemplates = state.templates.map((template) => {
         if (template.id !== state.currentTemplate) return template;
         return {
           ...template,
@@ -61,8 +78,10 @@ export const useAppStore = create<AppState>((set, get) => ({
             item.id === id ? { ...item, ...updates } : item
           ),
         };
-      }),
-    }));
+      });
+      broadcastState(state.currentTemplate, newTemplates);
+      return { templates: newTemplates };
+    });
   },
 
   addItem: (itemData) => {
@@ -71,29 +90,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: generateId(),
       position: get().getCurrentItems().length,
     };
-    set((state) => ({
-      templates: state.templates.map((template) => {
+    set((state) => {
+      const newTemplates = state.templates.map((template) => {
         if (template.id !== state.currentTemplate) return template;
         return {
           ...template,
           items: [...template.items, newItem],
         };
-      }),
-      selectedItemId: newItem.id,
-    }));
+      });
+      broadcastState(state.currentTemplate, newTemplates);
+      return {
+        templates: newTemplates,
+        selectedItemId: newItem.id,
+      };
+    });
   },
 
   removeItem: (id) => {
-    set((state) => ({
-      templates: state.templates.map((template) => {
+    set((state) => {
+      const newTemplates = state.templates.map((template) => {
         if (template.id !== state.currentTemplate) return template;
         return {
           ...template,
           items: template.items.filter((item) => item.id !== id),
         };
-      }),
-      selectedItemId: state.selectedItemId === id ? null : state.selectedItemId,
-    }));
+      });
+      broadcastState(state.currentTemplate, newTemplates);
+      return {
+        templates: newTemplates,
+        selectedItemId: state.selectedItemId === id ? null : state.selectedItemId,
+      };
+    });
   },
 
   reorderItems: (fromIndex, toIndex) => {
@@ -102,12 +129,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       const [removed] = items.splice(fromIndex, 1);
       items.splice(toIndex, 0, removed);
       const reorderedItems = items.map((item, index) => ({ ...item, position: index }));
-      return {
-        templates: state.templates.map((template) => {
-          if (template.id !== state.currentTemplate) return template;
-          return { ...template, items: reorderedItems };
-        }),
-      };
+      const newTemplates = state.templates.map((template) => {
+        if (template.id !== state.currentTemplate) return template;
+        return { ...template, items: reorderedItems };
+      });
+      broadcastState(state.currentTemplate, newTemplates);
+      return { templates: newTemplates };
     });
   },
 
@@ -125,7 +152,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   calculatePrice: () => {
     const state = get();
     const { selectedItemId, duration, selectedEquipmentIds, discountAmount } = state.orderState;
-    
+
     if (!selectedItemId) {
       return {
         basePrice: 0,
@@ -138,7 +165,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const items = state.getCurrentItems();
     const item = items.find((i) => i.id === selectedItemId);
-    
+
     if (!item) {
       return {
         basePrice: 0,
